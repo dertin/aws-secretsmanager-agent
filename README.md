@@ -36,6 +36,9 @@ To download the source code, see [https://github\.com/aws/aws\-workload\-credent
 - [AWS Workload Credentials Provider](#aws-workload-credentials-provider)
   - [Secrets Manager capability](#secrets-manager-capability)
   - [Certificate Management capability](#certificate-management-capability)
+  - [Quick install](#quick-install)
+      - [\[ Linux quick install \]](#-linux-quick-install-)
+      - [\[ Windows quick install \]](#-windows-quick-install-)
   - [Step 1: Build the Workload Credentials Provider binary](#step-1-build-the-workload-credentials-provider-binary)
       - [\[ RPM-based systems \]](#-rpm-based-systems-)
       - [\[ Debian-based systems \]](#-debian-based-systems-)
@@ -69,6 +72,49 @@ To download the source code, see [https://github\.com/aws/aws\-workload\-credent
       - [Option 1: Using the test script](#option-1-using-the-test-script)
       - [Option 2: Manual execution](#option-2-manual-execution)
     - [Test Organization](#test-organization)
+
+## Quick install<a name="workload-credentials-provider-quick-install"></a>
+
+The bootstrap installers download a released binary and the matching configuration directory, then run the install script for you\. Use them unless you need to build from source, in which case follow Step 1 and Step 2 instead\.
+
+------
+#### [ Linux quick install ]
+
+```sh
+installer=$(mktemp) && trap 'rm -f "$installer"' EXIT &&
+  curl --proto '=https' --tlsv1.2 -fsSL -o "$installer" \
+    https://raw.githubusercontent.com/aws/aws-workload-credentials-provider/HEAD/install.sh &&
+  sudo AWCP_VERSION=3.1.1 bash "$installer" --config /path/to/config.toml
+```
+
+`AWCP_VERSION` is required and must name a released, tagged version\. The script downloads the binary for your architecture from the artifact host and the service units and install scripts from the `v$AWCP_VERSION` tag, then hands off to the `install` script described in [Step 2](#workload-credentials-provider-install)\. It also accepts `--dry-run`, which downloads everything, keeps it, and prints where, without installing\.
+
+Download to a file rather than piping into a shell: `bash -c "$(curl …)"` exits 0 when the download fails, because the substitution is simply empty, so a failed install reads as a successful one\. If you do use that form, options must go after a `--`, since the shell would otherwise consume the first one as `$0`\.
+
+As with Step 2, add the user account that your application runs under to the `aws-wcp-token` group so it can read the SSRF token file\.
+
+------
+#### [ Windows quick install ]
+
+Run the following in an Administrator PowerShell session\. If the download fails on an older host, run `[Net.ServicePointManager]::SecurityProtocol = 'Tls12'` first\.
+
+```powershell
+$installer = Join-Path $env:TEMP "awcp-install.ps1"
+Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/aws/aws-workload-credentials-provider/HEAD/install.ps1 -OutFile $installer
+& $installer -Version 3.1.1 -Config C:\path\to\config.toml
+Remove-Item $installer
+```
+
+Download to a file rather than running the response directly: `[scriptblock]::Create()` on an empty body produces a script block that does nothing and reports success, so a truncated or empty download would read as a completed install\.
+
+If your execution policy refuses to run the file, or refuses the unsigned install scripts it downloads, run it as `powershell.exe -ExecutionPolicy Bypass -File $installer -Version 3.1.1 -Config C:\path\to\config.toml`\. The script checks the policy before downloading anything and tells you the same thing\.
+
+The script verifies the Authenticode signature on the binary and passes `-Config` and `-NoStart` through to the `install.ps1` script described in [Step 2](#workload-credentials-provider-install)\. It also accepts the following parameters:
+- `-Version <x.y.z>` — Version to install; required, and may also be given as the `AWCP_VERSION` environment variable
+- `-Force` — \(Optional\) Stop running provider services before installing
+- `-DryRun` — \(Optional\) Download and verify, then stop without installing
+
+------
 
 ## Step 1: Build the Workload Credentials Provider binary<a name="workload-credentials-provider-build"></a>
 
@@ -944,7 +990,7 @@ Your AWS credentials must have the following permissions:
 
 The role chaining integration tests require two IAM roles in the same account:
 
-1. **`asm-role-chaining-role`** — Must be assumable by the test runner's identity and have `secretsmanager:GetSecretValue` and `secretsmanager:DescribeSecret` permissions.
+1. **`asm-role-chaining-role`** — Must be assumable by the test runner's identity and have `secretsmanager:GetSecretValue`, `secretsmanager:DescribeSecret`, and `secretsmanager:BatchGetSecretValue` permissions.
 
 2. **`provider-no-access-role`** — Must be assumable by the test runner's identity but have *no* Secrets Manager permissions. Used to verify access-denied behavior.
 
